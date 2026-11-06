@@ -1,0 +1,6 @@
+# Python
+__pycache__/
+*.pyc
+# 本地缓存/状态(每日自动重建, 不入库)
+data/cache.json
+data/last_push.json

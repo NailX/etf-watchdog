@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>汪汪队ETF跟踪器(自建) · 今日国家队上班了吗</title>
+<style>
+:root{--up:#ff4713;--down:#00875a;--ink:#111;--ink2:#555;--line:#eee;--orange:#ff4713;--blue:#005eb8}
+*{box-sizing:border-box}body{margin:0;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:#fff}
+.wrap{max-width:1100px;margin:0 auto;padding:22px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--ink2);font-size:12px;margin-bottom:16px}
+.verdict{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:16px}
+.verdict.hot{border-left-color:var(--orange)}.verdict.mid{border-left-color:#e8a33c}
+.vt{font-size:26px;font-weight:800;margin:4px 0}.vr{font-size:13px;color:var(--ink2)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{font-size:12px;color:var(--ink2);cursor:pointer;user-select:none}th:hover{color:var(--blue)}
+.up{color:var(--up)}.down{color:var(--down)}.hi{color:var(--orange);font-weight:700}
+.notes{font-size:12px;color:var(--ink2);margin-top:22px;border-top:1px solid var(--line);padding-top:12px}
+.badge{display:inline-block;font-size:12px;border:1px solid var(--line);border-radius:99px;padding:3px 10px;color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>🐶 汪汪队ETF跟踪器 <span class="badge">自建版</span></h1>
+<div class="sub">宽基ETF成交额与资金动向 · 判断今日国家队是否上班 · 快照 <span id="stamp">—</span> <span id="auto"></span></div>
+<div class="verdict" id="v"><div class="vt" id="vt">载入中…</div><div class="vr" id="vr"></div></div>
+<table id="t"><thead><tr>
+<th data-k="name">ETF</th><th data-k="index">跟踪指数</th>
+<th data-k="amount_yi">成交额(亿)</th><th data-k="avg20_yi">20日均</th>
+<th data-k="mult">同时点倍数</th><th data-k="net">主动净买(亿)</th>
+<th data-k="pct">涨跌%</th><th data-k="shares_yi">份额(亿)</th><th data-k="huijin_yi">汇金25年报(亿份)</th>
+</tr></thead><tbody></tbody></table>
+<div class="notes">
+<b>口径说明：</b>①「主动净买入」=(外盘−内盘)÷(外盘+内盘)×成交额，是逐笔成交方向推算，<b>不是资金净流入、不是基金申赎</b>；②「同时点倍数」把盘中成交额用历史日内分布曲线对齐后再比20日均额；③汇金持仓为2025年报前十大持有人口径（绝版数据，非当前持仓）；④所有结论均为量价推测，不构成投资建议。数据源：腾讯行情/新浪K线公开接口。
+</div>
+</div>
+<script src="data/snapshot.js"></script>
+<script>
+var S=window.SNAPSHOT||null,sortK="mult",sortDir=-1;
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function cls(n){return n>0?"up":(n<0?"down":"")}
+function render(){
+  if(!S){document.getElementById("vt").textContent="数据快照未加载";return}
+  document.getElementById("stamp").textContent=S.generated_at;
+  var v=document.getElementById("v");
+  v.className="verdict"+(S.verdict_level===2?" hot":S.verdict_level===1?" mid":"");
+  document.getElementById("vt").textContent=S.verdict;
+  document.getElementById("vr").textContent="宽基24只成交合计 "+S.total_amount_yi+"亿 | 较20日均 "+S.mult_weighted+"x | 主动净买入合计 "+(S.total_net>0?"+":"")+S.total_net+"亿 | 300系(汇金主通道) "+(S.net300>0?"+":"")+S.net300+"亿";
+  var rows=S.items.slice().sort(function(a,b){var x=a[sortK],y=b[sortK];if(typeof x==="string")return sortDir*x.localeCompare(y);return sortDir*((x||0)-(y||0))});
+  document.querySelector("#t tbody").innerHTML=rows.map(function(r){
+    return "<tr><td>"+esc(r.name)+"</td><td>"+esc(r.index)+"</td><td>"+r.amount_yi+"</td><td>"+r.avg20_yi+
+    '</td><td class="'+(r.mult>=1.5?"hi":"")+'">'+r.mult+'x</td><td class="'+cls(r.net)+'">'+(r.net>0?"+":"")+r.net+
+    '</td><td class="'+cls(r.pct)+'">'+(r.pct>0?"+":"")+r.pct+'%</td><td>'+(r.shares_yi==null?"—":r.shares_yi)+
+    '</td><td>'+(r.huijin_yi==null?"—":r.huijin_yi)+"</td></tr>"}).join("");
+}
+document.querySelectorAll("th").forEach(function(th){th.onclick=function(){var k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=-1}render()}});
+render();
+// 交易时段每60秒刷新快照
+var bj=new Date(Date.now()+ (new Date().getTimezoneOffset()+480)*60000),t=bj.getHours()*60+bj.getMinutes();
+if(bj.getDay()>0&&bj.getDay()<6&&t>=570&&t<900){document.getElementById("auto").textContent="· 60s自动刷新";
+setTimeout(function(){var s=document.createElement("script");s.src="data/snapshot.js?t="+Date.now();s.onload=function(){S=window.SNAPSHOT;render()};document.body.appendChild(s)},60000);}
+</script>
+</body>
+</html>
