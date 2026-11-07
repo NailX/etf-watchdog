@@ -42,7 +42,7 @@ def mkt(code): return ("sh" if code[0] in "58" else "sz") + code
 
 def load_cache():
     try: return json.load(open(CACHE))
-    except Exception: return {"date": "", "avg20": {}, "shape": {}}
+    except Exception: return {"date": "", "avg20": {}, "shape": {}, "hist": {}}
 
 def sina_kline(code, scale, datalen):
     u = (f"https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_x=/CN_MarketDataService.getKLineData"
@@ -52,12 +52,14 @@ def sina_kline(code, scale, datalen):
     return json.loads(s)
 
 def refresh_daily(code, today):
-    """20日均额: 新浪日K 量×均价, 取今日之前20个交易日"""
-    ks = sina_kline(code, 240, 26)
-    rows = [k for k in ks if k["day"] < today][-20:]
-    if len(rows) < 15: return 0.0
+    """20日均额 + 近30日成交额历史(迷你图)"""
+    ks = sina_kline(code, 240, 40)
+    done = [k for k in ks if k["day"] < today]
+    rows = done[-20:]
+    if len(rows) < 15: return 0.0, []
     amts = [float(k["volume"]) * (float(k["open"]) + float(k["high"]) + float(k["low"]) + float(k["close"])) / 4 / 1e8 for k in rows]
-    return round(sum(amts) / len(amts), 2)
+    hist = [{"d": k["day"][5:], "amount_yi": round(float(k["volume"]) * (float(k["open"]) + float(k["high"]) + float(k["low"]) + float(k["close"])) / 4 / 1e8, 1)} for k in done[-30:]]
+    return round(sum(amts) / len(amts), 2), hist
 
 def refresh_shape(code, today):
     """日内成交额分布: 近20个完整交易日, 各5分钟时点累计占全天比例均值"""
@@ -85,7 +87,9 @@ def refresh_cache(today):
     print(f"[cache] 刷新 20日均额+日内分布 {today} ...", flush=True)
     for i, (code, _) in enumerate(ETF_LIST):
         try:
-            c["avg20"][code] = refresh_daily(code, today)
+            a20, hist = refresh_daily(code, today)
+            c["avg20"][code] = a20
+            c["hist"][code] = hist
             c["shape"][code] = refresh_shape(code, today)
         except Exception as e:
             print(f"[cache] {code} 失败: {e}")
@@ -115,7 +119,7 @@ def tencent_quotes():
             except Exception: pass
         out[code] = {"name": f[1], "price": num(3), "prev_close": num(4), "pct": num(32),
                      "outer": num(7), "inner": num(8), "amount_yi": num(37) / 1e4,
-                     "shares": shares}
+                     "turnover": num(38), "mktcap": num(45), "shares": shares}
     return out
 
 def shape_at(shape, tmin):
@@ -147,11 +151,16 @@ def main():
         mult = q["amount_yi"] / (base * sp) if base > 0 and sp and sp > 0.02 else 0.0
         tot_net += net; tot_amt += q["amount_yi"]; base_sum += base
         if code in ETF300: n300 += net
-        items.append({"code": code, "name": q["name"], "index": idx, "price": q["price"],
-                      "pct": q["pct"], "amount_yi": round(q["amount_yi"], 1), "avg20_yi": base,
+        items.append({"code": code, "tcode": mkt(code), "name": q["name"], "index": idx, "group": idx,
+                      "price": q["price"], "pct": q["pct"], "amount_yi": round(q["amount_yi"], 1), "avg20_yi": base,
                       "mult": round(mult, 2), "net": round(net, 1),
+                      "outer_lots": q["outer"], "inner_lots": q["inner"], "turnover": q["turnover"],
+                      "mktcap_yi": round(q["mktcap"], 1),
+                      "shares": int(q["shares"]) if q["shares"] else None,
                       "shares_yi": round(q["shares"] / 1e8, 1) if q["shares"] else None,
-                      "huijin_yi": HUIJIN.get(code)})
+                      "huijin_yi": HUIJIN.get(code),
+                      "hist": cache.get("hist", {}).get(code, []),
+                      "shape": cache.get("shape", {}).get(code, [])})
     mult_w = tot_amt / base_sum if base_sum else 0
     lv = 2 if (tot_net >= 90 or n300 >= 50) else (1 if (tot_net >= 40 or n300 >= 25 or (mult_w >= 1.8 and tot_net >= 15)) else 0)
     verdict = {2: "🔴 大概率上班了", 1: "🟠 疑似上班", 0: "⚪ 未上班/观望"}[lv]
@@ -159,6 +168,15 @@ def main():
             "verdict_level": lv, "verdict": verdict, "total_amount_yi": round(tot_amt, 1),
             "total_net": round(tot_net, 1), "mult_weighted": round(mult_w, 2), "net300": round(n300, 1),
             "items": items}
+    if tmin >= 900:  # 收盘后累积份额历史(前端份额图数据源)
+        hp = os.path.join(ROOT, "data", "shares_history.json")
+        try: sh = json.load(open(hp))
+        except Exception: sh = []
+        if not sh or sh[-1].get("date") != today:
+            sh.append({"date": today, "s": {it["code"]: it.get("shares_yi") for it in items}})
+            sh = sh[-250:]
+            json.dump(sh, open(hp, "w"))
+        snap["shares_history"] = sh
     os.makedirs(os.path.dirname(SNAP), exist_ok=True)
     js = "window.SNAPSHOT = " + json.dumps(snap, ensure_ascii=False) + ";\n"
     open(SNAP, "w").write(js)
