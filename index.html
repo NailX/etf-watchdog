@@ -335,7 +335,6 @@ function render(){
   var rows=(S.items||[]).map(function(it){var c=calc(it,st);return {it:it,ratio:c.ratio,raw:c.raw,net:c.net}});
   var totNet=rows.reduce(function(a,r){return a+r.net},0),
       totAmt=rows.reduce(function(a,r){return a+r.it.amount_yi},0),
-      n300=rows.reduce(function(a,r){return a+((r.it.group==='沪深300'||r.it.group==='上证50')?r.net:0)},0),
       baseSum=(S.items||[]).reduce(function(a,it){return a+(it.avg20_yi||0)},0);
   var multW=baseSum?totAmt/baseSum:0;
 
@@ -344,12 +343,12 @@ function render(){
   if(lv===2){vd.className='verdict hot';vt.className='';vt.textContent='🔴 大概率上班了'}
   else if(lv===1){vd.className='verdict mid';vt.className='';vt.textContent='🟠 疑似上班'}
   else{vd.className='verdict';vt.className='cool';vt.textContent='⚪ 未上班 / 观望'}
-  vr.textContent='宽基'+rows.length+'只成交合计 '+fmt(totAmt,1)+' 亿 · 主动净买入合计 '+sg(totNet,1)+' 亿 · 300系净买入 '+sg(n300,1)+' 亿（'+(st.trading?'盘中，同时点对齐口径':'收盘口径')+'）';
+  vr.textContent='宽基'+rows.length+'只成交合计 '+fmt(totAmt,1)+' 亿 · 主动净买入合计 '+sg(totNet,1)+' 亿（'+(st.trading?'盘中，同时点对齐口径':'收盘口径')+'）';
   $('vstampNum').textContent=fmt(multW,2)+'x';
 
   $('mgrid').innerHTML=
     mcard('主动净买入合计',sg(totNet,1)+'亿',totNet>=40?'hi':'')+
-    mcard('300系净买入',sg(n300,1)+'亿','')+
+    mcard('成交额倍数',fmt(multW,2)+'x',multW>=1.8?'hi':'')+
     mcard('成交合计',fmt(totAmt,0)+'亿','')+
     mcard('判定',lv===2?'🔴 大概率':lv===1?'🟠 疑似':'⚪ 未上班','');
 
