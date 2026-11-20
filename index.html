@@ -222,7 +222,10 @@ svg{display:inline-block;vertical-align:middle}
     <button data-r="中证A500">A500</button>
     <button data-r="其他">其他</button>
   </div>
-  <button class="primary" id="refresh">立即刷新</button>
+  <div class="grp">
+    <button class="primary" id="refresh">立即刷新</button>
+    <span class="muted" id="autoInfo" style="font-size:12px">自动刷新：—</span>
+  </div>
 </div>
 <div class="tablewrap">
 <table id="tbl">
@@ -397,8 +400,8 @@ function renderShares(){
 function reload(cb){
   var s=document.createElement('script');
   s.src='data/snapshot.js?t='+Date.now();
-  s.onload=function(){S=window.SNAPSHOT;render();if(cb)cb()};
-  s.onerror=function(){if(cb)cb()};
+  s.onload=function(){S=window.SNAPSHOT;render();if(cb)cb(true)};
+  s.onerror=function(){if(cb)cb(false)};
   document.body.appendChild(s);
 }
 $('sortSel').addEventListener('change',function(e){SORTK=e.target.value;render()});
@@ -409,12 +412,38 @@ $('rangeGrp').addEventListener('click',function(e){
   for(var i=0;i<btns.length;i++)btns[i].className=(btns[i]===b?'on':'');
   render();
 });
-$('refresh').addEventListener('click',function(){
-  var btn=$('refresh');btn.textContent='刷新中…';
-  reload(function(){btn.textContent='立即刷新'});
-});
 render();
-if(marketState().trading)setTimeout(function(){reload()},60000);
+/* 一键刷新 + 按频率自动刷新（合一）：
+   交易时段 60s / 非交易时段 10min；手动点击立即刷新并重置计时；
+   连续失败 3 次退避到 5min，恢复成功即回到正常频率 */
+var AUTO={timer:null,tickTimer:null,nextAt:0,busy:false,fail:0,
+  interval:function(){return marketState().trading?60000:600000},
+  info:function(){
+    var st=marketState(),el=$('autoInfo');
+    if(!st.trading){el.textContent='非交易时段 · 每10分钟自动刷新';return}
+    var s=Math.max(0,Math.round((AUTO.nextAt-Date.now())/1000));
+    el.textContent='交易时段 · '+s+'s 后自动刷新';
+  },
+  schedule:function(){
+    clearTimeout(AUTO.timer);
+    AUTO.nextAt=Date.now()+AUTO.interval();
+    AUTO.timer=setTimeout(function(){AUTO.run(true)},AUTO.interval());
+  },
+  run:function(auto){
+    if(AUTO.busy)return;
+    AUTO.busy=true;
+    var btn=$('refresh');btn.textContent='刷新中…';btn.disabled=true;
+    reload(function(ok){
+      AUTO.busy=false;btn.disabled=false;btn.textContent='立即刷新';
+      if(ok){AUTO.fail=0}else{AUTO.fail++;if(AUTO.fail>=3)AUTO.nextAt=Date.now()+300000}
+      AUTO.schedule();
+    });
+  }
+};
+clearInterval(AUTO.tickTimer);
+AUTO.tickTimer=setInterval(AUTO.info,1000);
+$('refresh').addEventListener('click',function(){AUTO.run(false)});
+AUTO.schedule();
 })();
 </script>
 </body>
